@@ -1,17 +1,16 @@
 #!/bin/bash
 
 # Инициализация поля
-field=($(printf '0 %.0s' {1..20}))  # Массив 1x20, заполненный нулями
-enemy_hits=0  # Счетчик попаданий по противнику
-my_hits=0     # Счетчик попаданий по моему полю
-enemy_ships=9 # Количество неподбитых клеток противника (1+2+3+3)
+field=($(printf '0 %.0s' {1..20})) 
+enemy_hits=0 
+my_hits=0 
+enemy_ships=9
 
-# Функция для случайного размещения кораблей
 place_ships() {
-    # Однопалубный
+
     pos=$((RANDOM % 20))
     field[$pos]=1
-    # Двухпалубный
+
     while true; do
         pos=$((RANDOM % 19))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ]; then
@@ -20,7 +19,7 @@ place_ships() {
             break
         fi
     done
-    # Первый трехпалубный
+
     while true; do
         pos=$((RANDOM % 18))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ] && [ ${field[$((pos+2))]} -eq 0 ]; then
@@ -30,7 +29,7 @@ place_ships() {
             break
         fi
     done
-    # Второй трехпалубный
+
     while true; do
         pos=$((RANDOM % 18))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ] && [ ${field[$((pos+2))]} -eq 0 ]; then
@@ -42,19 +41,15 @@ place_ships() {
     done
 }
 
-# Функция для умного выбора выстрела
+
 shoot() {
-    # Массив для отслеживания проверенных клеток
     if [ -z "${checked[*]}" ]; then
         checked=($(printf '0 %.0s' {1..20}))
     fi
 
-    # Если есть неподбитые трехпалубные корабли (enemy_ships >= 3), ищем последовательности
     if [ $enemy_ships -ge 3 ]; then
-        # Ищем попадание, чтобы добить рядом
         for i in {0..19}; do
             if [ ${checked[$i]} -eq 1 ] && [ ${field[$i]} -eq 2 ]; then
-                # Проверяем соседние клетки
                 if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ]; then
                     checked[$((i-1))]=1
                     echo $((i-1))
@@ -69,7 +64,6 @@ shoot() {
         done
     fi
 
-    # Если остались мелкие корабли или не нашли подходящих клеток, стреляем случайно
     while true; do
         pos=$((RANDOM % 20))
         if [ ${checked[$pos]} -eq 0 ]; then
@@ -80,36 +74,31 @@ shoot() {
     done
 }
 
-# Размещаем корабли
 place_ships
 
-# Основной цикл игры
 echo "Player 1: My PID is $$"
 while true; do
     # Мой ход
     shot=$(shoot)
     echo "Player 1 shoots at $shot"
-    echo "$shot" > pipe1  # Отправляем выстрел
+    echo "$shot" > pipe1
 
-    # Ждем ответа от Player 2
     read result < pipe2
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
         enemy_ships=$((enemy_ships - 1))
         echo "Player 1: Hit! Enemy ships left: $enemy_ships"
-        field[$shot]=2  # Отмечаем попадание на нашем "вражеском" поле
+        field[$shot]=2
     else
         echo "Player 1: Miss"
-        field[$shot]=3  # Отмечаем промах
+        field[$shot]=3
     fi
 
-    # Проверяем победу
     if [ $enemy_hits -eq 9 ]; then
         echo "Player 1 wins!"
         break
     fi
 
-    # Ждем выстрел от Player 2
     read enemy_shot < pipe1
     echo "Player 2 shoots at $enemy_shot"
     if [ ${field[$enemy_shot]} -eq 1 ]; then
@@ -123,7 +112,6 @@ while true; do
         echo "Player 1: Miss on my field at $enemy_shot"
     fi
 
-    # Проверяем поражение
     if [ $my_hits -eq 9 ]; then
         echo "Player 2 wins!"
         break
