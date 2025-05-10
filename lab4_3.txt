@@ -1,0 +1,31 @@
+#!/bin/bash
+
+source_dir="$HOME/source"
+report="$HOME/backup-report"
+current_date=$(date +%Y-%m-%d)
+
+newest_backup_dir=$(ls $HOME | grep "^Backup-" | sort -n | tail -1)
+newest_backup_date=$(echo $newest_backup_dir | sed "s/Backup-//")
+time_difference=$((($(date -d "$current_date" +%s)-$(date -d "$newest_backup_date" +%s))/86400))
+
+if [[ time_difference -gt 7 ]]; then
+  backup_dir="$HOME/Backup-$current_date"
+  mkdir $backup_dir
+
+  cp -RT $source_dir $backup_dir
+
+  echo "$backup_dir created at current_date" >> $report
+  ls $backup_dir >> $report
+else
+  backup_dir="$HOME/$newest_backup_dir"
+
+  echo "$backup_dir update at $current_date" >> $report
+
+  for file in $(ls $source_dir); do
+    if [[ -f "$backup_dir/$file" && $(stat -c%s "$backup_dir/$file") -ne $(stat -c%s "$source_dir/$file") ]]; then
+      mv "$backup_dir/$file" "$backup_dir/$file.$current_date"
+      echo "$file updated to $file.$current_date" >> $report
+    fi
+  done
+  cp -RT $source_dir $backup_dir
+fi
