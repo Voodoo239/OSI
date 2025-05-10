@@ -1,0 +1,35 @@
+#!/bin/bash
+
+file_name="$1"
+file_path="$PWD/$file_name"
+trash="/home/user/.trash"
+tag=$((1000+$RANDOM%8999))
+hard_link="$trash/$file_name$tag"
+trash_log="/home/user/.trash.log"
+
+if [[ $# > 1 ]]; then 
+    echo "too many arguments given (have to be 1)"
+    exit
+fi
+
+if [[ $# < 1 ]]; then 
+    echo "no arguments given (have to be 1)"
+    exit
+fi
+
+if [[ ! -f $1 ]]; then 
+    echo "rmtrash: file $1 not found"
+    exit
+fi
+
+if [[ ! -d "$trash" ]]; then 
+    mkdir -p "$trash"
+fi
+
+while [[ -f "$hard_link" ]]; do 
+    hard_link="$hard_link$tag"
+done
+
+ln "$file_path" "$hard_link"
+echo "$file_path:$hard_link" >> "$trash_log"
+rm "$file_path"
