@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# Инициализация поля
+# Инициализация полей
 field=($(printf '0 %.0s' {1..20}))
+enemy_field=($(printf '0 %.0s' {1..20}))
 enemy_hits=0
 my_hits=0
 enemy_ships=9
+checked=($(printf '0 %.0s' {1..20}))
 
-# Функция для размещения кораблей (такая же, как в player1.sh)
+# Функция для размещения кораблей
 place_ships() {
     pos=$((RANDOM % 20))
     field[$pos]=1
@@ -38,14 +40,11 @@ place_ships() {
     done
 }
 
-# Функция для выбора выстрела (такая же, как в player1.sh)
+# Функция для выбора выстрела
 shoot() {
-    if [ -z "${checked[*]}" ]; then
-        checked=($(printf '0 %.0s' {1..20}))
-    fi
     if [ $enemy_ships -ge 3 ]; then
         for i in {0..19}; do
-            if [ ${checked[$i]} -eq 1 ] && [ ${field[$i]} -eq 2 ]; then
+            if [ ${enemy_field[$i]} -eq 2 ]; then
                 if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ]; then
                     checked[$((i-1))]=1
                     echo $((i-1))
@@ -66,6 +65,18 @@ shoot() {
             echo $pos
             return
         fi
+        all_checked=1
+        for i in {0..19}; do
+            if [ ${checked[$i]} -eq 0 ]; then
+                all_checked=0
+                break
+            fi
+        done
+        if [ $all_checked -eq 1 ]; then
+            echo "Error: All cells checked but game not finished!" >> game.log
+            echo "QUIT" > pipe2
+            exit 1
+        fi
     done
 }
 
@@ -73,48 +84,58 @@ shoot() {
 place_ships
 
 # Основной цикл игры
-echo "Player 2: My PID is $$"
+echo "Player 2: My PID is $$" | tee -a game.log
 while true; do
     # Ждем выстрел от Player 1
     read enemy_shot < pipe1
-    echo "Player 1 shoots at $enemy_shot"
+    if [ "$enemy_shot" = "QUIT" ]; then
+        echo "Player 2: Received QUIT, exiting" | tee -a game.log
+        break
+    fi
+    echo "Player 1 shoots at $enemy_shot" | tee -a game.log
     if [ ${field[$enemy_shot]} -eq 1 ]; then
         echo "hit" > pipe2
         field[$enemy_shot]=2
         my_hits=$((my_hits + 1))
-        echo "Player 2: Hit on my field at $enemy_shot"
+        echo "Player 2: Hit on my field at $enemy_shot" | tee -a game.log
     else
         echo "miss" > pipe2
         field[$enemy_shot]=3
-        echo "Player 2: Miss on my field at $enemy_shot"
+        echo "Player 2: Miss on my field at $enemy_shot" | tee -a game.log
     fi
 
     # Проверяем поражение
     if [ $my_hits -eq 9 ]; then
-        echo "Player 1 wins!"
+        echo "Player 1 wins!" | tee -a game.log
+        echo "QUIT" > pipe2
         break
     fi
 
     # Мой ход
     shot=$(shoot)
-    echo "Player 2 shoots at $shot"
+    echo "Player 2 shoots at $shot" | tee -a game.log
     echo "$shot" > pipe1
 
     # Ждем ответа от Player 1
     read result < pipe2
+    if [ "$result" = "QUIT" ]; then
+        echo "Player 2: Received QUIT, exiting" | tee -a game.log
+        break
+    fi
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
         enemy_ships=$((enemy_ships - 1))
-        echo "Player 2: Hit! Enemy ships left: $enemy_ships"
-        field[$shot]=2
+        echo "Player 2: Hit! Enemy ships left: $enemy_ships" | tee -a game.log
+        enemy_field[$shot]=2
     else
-        echo "Player 2: Miss"
-        field[$shot]=3
+        echo "Player 2: Miss" | tee -a game.log
+        enemy_field[$shot]=3
     fi
 
     # Проверяем победу
     if [ $enemy_hits -eq 9 ]; then
-        echo "Player 2 wins!"
+        echo "Player 2 wins!" | tee -a game.log
+        echo "QUIT" > pipe1
         break
     fi
 done
