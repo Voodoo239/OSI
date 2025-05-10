@@ -7,6 +7,7 @@ enemy_hits=0  # Счетчик попаданий по противнику
 my_hits=0     # Счетчик попаданий по моему полю
 enemy_ships=9 # Количество неподбитых клеток противника
 checked=($(printf '0 %.0s' {1..20}))  # Отслеживание проверенных клеток
+last_hit=-1   # Позиция последнего попадания (-1 означает нет попадания)
 
 # Функция для случайного размещения кораблей
 place_ships() {
@@ -44,26 +45,69 @@ place_ships() {
     done
 }
 
+# Функция проверки, потоплен ли корабль вокруг позиции
+check_sunk() {
+    local pos=$1
+    # Считаем, сколько клеток корабля осталось вокруг позиции
+    local count=1  # Сама клетка уже подбита
+    local i=$pos
+    # Ищем влево
+    while [ $i -gt 0 ]; do
+        i=$((i-1))
+        if [ ${enemy_field[$i]} -eq 2 ]; then
+            count=$((count+1))
+        elif [ ${enemy_field[$i]} -eq 0 ] || [ ${enemy_field[$i]} -eq 3 ]; then
+            break
+        fi
+    done
+    # Ищем вправо
+    i=$pos
+    while [ $i -lt 19 ]; do
+        i=$((i+1))
+        if [ ${enemy_field[$i]} -eq 2 ]; then
+            count=$((count+1))
+        elif [ ${enemy_field[$i]} -eq 0 ] || [ ${enemy_field[$i]} -eq 3 ]; then
+            break
+        fi
+    done
+    # Если рядом нет неподбитых клеток, корабль потоплен
+    i=$pos
+    local sunk=1
+    if [ $i -gt 0 ]; then
+        i=$((i-1))
+        if [ ${enemy_field[$i]} -eq 0 ] && [ ${checked[$i]} -eq 0 ]; then
+            sunk=0
+        fi
+    fi
+    i=$pos
+    if [ $i -lt 19 ]; then
+        i=$((i+1))
+        if [ ${enemy_field[$i]} -eq 0 ] && [ ${checked[$i]} -eq 0 ]; then
+            sunk=0
+        fi
+    fi
+    if [ $sunk -eq 1 ]; then
+        echo "Player 1: Ship sunk at $pos (size $count)" | tee -a game.log
+        last_hit=-1
+    fi
+    return $sunk
+}
+
 # Функция для выбора выстрела
 shoot() {
-    # Если есть неподбитые трехпалубные корабли (enemy_ships >= 3), ищем последовательности
-    if [ $enemy_ships -ge 3 ]; then
-        # Ищем попадание, чтобы добить рядом
-        for i in {0..19}; do
-            if [ ${enemy_field[$i]} -eq 2 ]; then
-                # Проверяем соседние клетки
-                if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ]; then
-                    checked[$((i-1))]=1
-                    echo $((i-1))
-                    return
-                fi
-                if [ $i -lt 19 ] && [ ${checked[$((i+1))]} -eq 0 ]; then
-                    checked[$((i+1))]=1
-                    echo $((i+1))
-                    return
-                fi
-            fi
-        done
+    # Если есть недавнее попадание, пытаемся добить корабль
+    if [ $last_hit -ne -1 ]; then
+        i=$last_hit
+        if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ]; then
+            checked[$((i-1))]=1
+            echo $((i-1))
+            return
+        fi
+        if [ $i -lt 19 ] && [ ${checked[$((i+1))]} -eq 0 ]; then
+            checked[$((i+1))]=1
+            echo $((i+1))
+            return
+        fi
     fi
 
     # Случайный выстрел в непроверенную клетку
@@ -74,7 +118,7 @@ shoot() {
             echo $pos
             return
         fi
-        # Если все клетки проверены, но игра не закончилась, что-то пошло не так
+        # Проверка на случай, если все клетки проверены
         all_checked=1
         for i in {0..19}; do
             if [ ${checked[$i]} -eq 0 ]; then
@@ -83,7 +127,7 @@ shoot() {
             fi
         done
         if [ $all_checked -eq 1 ]; then
-            echo "Error: All cells checked but game not finished!" >> game.log
+            echo "Error: All cells checked but game not finished!" | tee -a game.log
             echo "QUIT" > pipe1
             exit 1
         fi
@@ -110,11 +154,15 @@ while true; do
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
         enemy_ships=$((enemy_ships - 1))
-        echo "Player 1: Hit! Enemy ships left: $enemy_ships" | tee -a game.log
         enemy_field[$shot]=2  # Отмечаем попадание
+        last_hit=$shot
+        echo "Player 1: Hit! Enemy ships left: $enemy_ships" | tee -a game.log
+        # Проверяем, потоплен ли корабль
+        check_sunk $shot
     else
         echo "Player 1: Miss" | tee -a game.log
         enemy_field[$shot]=3  # Отмечаем промах
+        last_hit=-1
     fi
 
     # Проверяем победу
