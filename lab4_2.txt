@@ -1,0 +1,38 @@
+#!/bin/bash
+
+if [[ $# > 1 ]]; then
+    echo "too many arguments provided (have to be 1)"
+    exit
+fi
+
+if [[ $# < 1 ]]; then
+    echo "no arguments provided (have to be 1)"
+    exit
+fi
+
+file_name="$1"
+trash_log="/home/user/.trash.log"
+
+echo $file_name
+
+IFS=":"
+while read -r full_path hard_link; do
+    if [[ $(echo "$full_path" | awk -F/ '{print $NF}') == "$file_name" ]]; then
+        read -p "recover file $full_path? (y or n): " answer </dev/tty
+        case "$answer" in
+            "y")
+                file_dir=$full_path
+                file_dir=$(dirname "$file_dir")/
+                echo "$file_dir"
+                if [[ ! -d $file_dir ]]; then
+                    file_dir="/home/user/"
+                    echo "recovery dir is set to /home/user/ because previous dir is unavailable"
+                fi
+                ln "$hard_link" "$file_dir$file_name"
+                rm "$hard_link"
+                ;;
+            "n")
+                ;;
+        esac
+    fi
+done < "$trash_log"
