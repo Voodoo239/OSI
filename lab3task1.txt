@@ -2,17 +2,18 @@
 
 # Инициализация полей
 field=($(printf '0 %.0s' {1..20}))  # Мое поле
-enemy_field=($(printf '0 %.0s' {1..20}))  # Поле противника
+enemy_field=($(printf '0 %.0s' {1..20}))  # Поле противника для отслеживания
 enemy_hits=0  # Счетчик попаданий по противнику
 my_hits=0     # Счетчик попаданий по моему полю
-enemy_ships_left=9  # Осталось неподбитых клеток
-checked=($(printf '0 %.0s' {1..20}))  # Проверенные клетки
-last_hit=-1  # Последняя клетка, в которую попали
+enemy_ships=9 # Количество неподбитых клеток противника
+checked=($(printf '0 %.0s' {1..20}))  # Отслеживание проверенных клеток
 
-# Функция для размещения кораблей
+# Функция для случайного размещения кораблей
 place_ships() {
+    # Однопалубный
     pos=$((RANDOM % 20))
     field[$pos]=1
+    # Двухпалубный
     while true; do
         pos=$((RANDOM % 19))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ]; then
@@ -21,6 +22,7 @@ place_ships() {
             break
         fi
     done
+    # Первый трехпалубный
     while true; do
         pos=$((RANDOM % 18))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ] && [ ${field[$((pos+2))]} -eq 0 ]; then
@@ -30,6 +32,7 @@ place_ships() {
             break
         fi
     done
+    # Второй трехпалубный
     while true; do
         pos=$((RANDOM % 18))
         if [ ${field[$pos]} -eq 0 ] && [ ${field[$((pos+1))]} -eq 0 ] && [ ${field[$((pos+2))]} -eq 0 ]; then
@@ -43,42 +46,44 @@ place_ships() {
 
 # Функция для выбора выстрела
 shoot() {
-    # Если есть последнее попадание, пытаемся добить корабль
-    if [ $last_hit -ne -1 ]; then
-        # Проверяем соседние клетки
-        local left=$((last_hit - 1))
-        local right=$((last_hit + 1))
-        if [ $left -ge 0 ] && [ ${checked[$left]} -eq 0 ] && [ ${enemy_field[$left]} -ne 3 ]; then
-            checked[$left]=1
-            echo $left
-            return
-        fi
-        if [ $right -lt 20 ] && [ ${checked[$right]} -eq 0 ] && [ ${enemy_field[$right]} -ne 3 ]; then
-            checked[$right]=1
-            echo $right
-            return
-        fi
-        # Если не нашли подходящих клеток рядом, сбрасываем last_hit
-        last_hit=-1
+    # Если есть неподбитые трехпалубные корабли (enemy_ships >= 3), ищем последовательности
+    if [ $enemy_ships -ge 3 ]; then
+        # Ищем попадание, чтобы добить рядом
+        for i in {0..19}; do
+            if [ ${enemy_field[$i]} -eq 2 ]; then
+                # Проверяем соседние клетки
+                if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ]; then
+                    checked[$((i-1))]=1
+                    echo $((i-1))
+                    return
+                fi
+                if [ $i -lt 19 ] && [ ${checked[$((i+1))]} -eq 0 ]; then
+                    checked[$((i+1))]=1
+                    echo $((i+1))
+                    return
+                fi
+            fi
+        done
     fi
 
-    # Случайный выстрел
+    # Случайный выстрел в непроверенную клетку
     while true; do
         pos=$((RANDOM % 20))
-        if [ ${checked[$pos]} -eq 0 ] && [ ${enemy_field[$pos]} -ne 3 ]; then
+        if [ ${checked[$pos]} -eq 0 ]; then
             checked[$pos]=1
             echo $pos
             return
         fi
+        # Если все клетки проверены, но игра не закончилась, что-то пошло не так
         all_checked=1
         for i in {0..19}; do
-            if [ ${checked[$i]} -eq 0 ] && [ ${enemy_field[$i]} -ne 3 ]; then
+            if [ ${checked[$i]} -eq 0 ]; then
                 all_checked=0
                 break
             fi
         done
         if [ $all_checked -eq 1 ]; then
-            echo "Error: All valid cells checked but game not finished!" >> game.log
+            echo "Error: All cells checked but game not finished!" >> game.log
             echo "QUIT" > pipe1
             exit 1
         fi
@@ -91,10 +96,12 @@ place_ships
 # Основной цикл игры
 echo "Player 1: My PID is $$" | tee -a game.log
 while true; do
+    # Мой ход
     shot=$(shoot)
     echo "Player 1 shoots at $shot" | tee -a game.log
-    echo "$shot" > pipe1
+    echo "$shot" > pipe1  # Отправляем выстрел
 
+    # Ждем ответа от Player 2
     read result < pipe2
     if [ "$result" = "QUIT" ]; then
         echo "Player 1: Received QUIT, exiting" | tee -a game.log
@@ -102,22 +109,22 @@ while true; do
     fi
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
-        enemy_ships_left=$((enemy_ships_left - 1))
-        last_hit=$shot
-        enemy_field[$shot]=2
-        echo "Player 1: Hit! Enemy ships left: $enemy_ships_left" | tee -a game.log
+        enemy_ships=$((enemy_ships - 1))
+        echo "Player 1: Hit! Enemy ships left: $enemy_ships" | tee -a game.log
+        enemy_field[$shot]=2  # Отмечаем попадание
     else
-        last_hit=-1
-        enemy_field[$shot]=3
         echo "Player 1: Miss" | tee -a game.log
+        enemy_field[$shot]=3  # Отмечаем промах
     fi
 
+    # Проверяем победу
     if [ $enemy_hits -eq 9 ]; then
         echo "Player 1 wins!" | tee -a game.log
         echo "QUIT" > pipe1
         break
     fi
 
+    # Ждем выстрел от Player 2
     read enemy_shot < pipe1
     if [ "$enemy_shot" = "QUIT" ]; then
         echo "Player 1: Received QUIT, exiting" | tee -a game.log
@@ -135,6 +142,7 @@ while true; do
         echo "Player 1: Miss on my field at $enemy_shot" | tee -a game.log
     fi
 
+    # Проверяем поражение
     if [ $my_hits -eq 9 ]; then
         echo "Player 2 wins!" | tee -a game.log
         echo "QUIT" > pipe2
