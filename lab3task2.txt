@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Инициализация поля
 field=($(printf '0 %.0s' {1..20}))
 enemy_hits=0
 my_hits=0
 enemy_ships=9
 
-# Функция для размещения кораблей (такая же, как в player1.sh)
 place_ships() {
     pos=$((RANDOM % 20))
     field[$pos]=1
@@ -38,7 +36,6 @@ place_ships() {
     done
 }
 
-# Функция для выбора выстрела (такая же, как в player1.sh)
 shoot() {
     if [ -z "${checked[*]}" ]; then
         checked=($(printf '0 %.0s' {1..20}))
@@ -69,13 +66,10 @@ shoot() {
     done
 }
 
-# Размещаем корабли
 place_ships
 
-# Основной цикл игры
 echo "Player 2: My PID is $$"
 while true; do
-    # Ждем выстрел от Player 1
     read enemy_shot < pipe1
     echo "Player 1 shoots at $enemy_shot"
     if [ ${field[$enemy_shot]} -eq 1 ]; then
@@ -89,18 +83,15 @@ while true; do
         echo "Player 2: Miss on my field at $enemy_shot"
     fi
 
-    # Проверяем поражение
     if [ $my_hits -eq 9 ]; then
         echo "Player 1 wins!"
         break
     fi
 
-    # Мой ход
     shot=$(shoot)
     echo "Player 2 shoots at $shot"
     echo "$shot" > pipe1
 
-    # Ждем ответа от Player 1
     read result < pipe2
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
@@ -112,7 +103,6 @@ while true; do
         field[$shot]=3
     fi
 
-    # Проверяем победу
     if [ $enemy_hits -eq 9 ]; then
         echo "Player 2 wins!"
         break
