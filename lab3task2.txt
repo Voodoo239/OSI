@@ -5,14 +5,9 @@ field=($(printf '0 %.0s' {1..20}))
 enemy_field=($(printf '0 %.0s' {1..20}))
 enemy_hits=0
 my_hits=0
-enemy_ships_total=9
 enemy_ships_left=9
 checked=($(printf '0 %.0s' {1..20}))
-
-# Счетчики потопленных кораблей
-enemy_1deck=1
-enemy_2deck=1
-enemy_3deck=2
+last_hit=-1
 
 # Функция для размещения кораблей
 place_ships() {
@@ -46,52 +41,29 @@ place_ships() {
     done
 }
 
-# Функция для проверки, потоплен ли корабль
-check_sunk() {
-    local pos=$1
-    local size=1
-    while [ $((pos - size)) -ge 0 ] && [ ${enemy_field[$((pos - size))]} -eq 2 ]; do
-        ((size++))
-    done
-    while [ $((pos + size)) -lt 20 ] && [ ${enemy_field[$((pos + size))]} -eq 2 ]; do
-        ((size++))
-    done
-    if [ $size -gt 1 ]; then
-        case $size in
-            2) ((enemy_1deck--)); echo "1-deck sunk" ;;
-            3|4) ((enemy_2deck--)); echo "2-deck sunk" ;;
-            5|6) ((enemy_3deck--)); echo "3-deck sunk" ;;
-        esac
-        enemy_ships_left=$((enemy_ships_left - size + 1))
-    fi
-}
-
 # Функция для выбора выстрела
 shoot() {
-    if [ $enemy_ships_left -ge 3 ] && [ $((enemy_3deck + enemy_2deck)) -gt 0 ]; then
-        for i in {0..19}; do
-            if [ ${enemy_field[$i]} -eq 2 ]; then
-                if [ $i -gt 0 ] && [ ${checked[$((i-1))]} -eq 0 ] && [ ${enemy_field[$((i-1))]} -ne 3 ]; then
-                    checked[$((i-1))]=1
-                    echo $((i-1))
-                    check_sunk $((i-1))
-                    return
-                fi
-                if [ $i -lt 19 ] && [ ${checked[$((i+1))]} -eq 0 ] && [ ${enemy_field[$((i+1))]} -ne 3 ]; then
-                    checked[$((i+1))]=1
-                    echo $((i+1))
-                    check_sunk $((i+1))
-                    return
-                fi
-            fi
-        done
+    if [ $last_hit -ne -1 ]; then
+        local left=$((last_hit - 1))
+        local right=$((last_hit + 1))
+        if [ $left -ge 0 ] && [ ${checked[$left]} -eq 0 ] && [ ${enemy_field[$left]} -ne 3 ]; then
+            checked[$left]=1
+            echo $left
+            return
+        fi
+        if [ $right -lt 20 ] && [ ${checked[$right]} -eq 0 ] && [ ${enemy_field[$right]} -ne 3 ]; then
+            checked[$right]=1
+            echo $right
+            return
+        fi
+        last_hit=-1
     fi
+
     while true; do
         pos=$((RANDOM % 20))
         if [ ${checked[$pos]} -eq 0 ] && [ ${enemy_field[$pos]} -ne 3 ]; then
             checked[$pos]=1
             echo $pos
-            check_sunk $pos
             return
         fi
         all_checked=1
@@ -149,9 +121,12 @@ while true; do
     fi
     if [ "$result" = "hit" ]; then
         enemy_hits=$((enemy_hits + 1))
+        enemy_ships_left=$((enemy_ships_left - 1))
+        last_hit=$shot
         enemy_field[$shot]=2
         echo "Player 2: Hit! Enemy ships left: $enemy_ships_left" | tee -a game.log
     else
+        last_hit=-1
         enemy_field[$shot]=3
         echo "Player 2: Miss" | tee -a game.log
     fi
